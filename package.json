@@ -3,14 +3,22 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-    "type": "module",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon src/index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "firebase": "^12.6.0",
+    "firebase-admin": "^13.6.0",
+    "morgan": "^1.10.1",
     "puppeteer": "^24.26.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
   }
 }
