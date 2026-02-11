@@ -1,6 +1,6 @@
 import express from 'express';
 import morgan from 'morgan';
-import indexRoutes from "./routes/index.js"; // recuerda la extensión .js
+import indexRoutes from "./routes/index.js";
 
 
 const app = express();

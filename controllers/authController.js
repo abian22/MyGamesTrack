@@ -4,14 +4,14 @@ export const signUp = async (req, res) => {
   const { email, password, name } = req.body;
 
   try {
-    // 1️⃣ Crear usuario en Firebase Auth
+    // Crear usuario en Firebase
     const userRecord = await auth.createUser({
       email,
       password,
       displayName: name
     });
 
-    // 2️⃣ Crear documento en Firestore con campos adicionales
+    // Crear documento en Firestore
     await db.collection("users").doc(userRecord.uid).set({
       name,
       email,
@@ -20,7 +20,7 @@ export const signUp = async (req, res) => {
       createdAt: new Date()
     });
 
-    // 3️⃣ Crear custom token para frontend
+    //Crear custom token 
     const customToken = await auth.createCustomToken(userRecord.uid);
     res.status(201).json({ token: customToken });
   } catch (error) {
@@ -29,7 +29,7 @@ export const signUp = async (req, res) => {
   }
 };
 
-// El login en Firebase se hace en frontend, aquí solo validamos el token recibido
+// Login en Firebase
 export const login = async (req, res) => {
   try {
     const { idToken } = req.body; // token recibido desde frontend
