@@ -1,4 +1,5 @@
 import { auth, db } from "../firebase.js";
+import User from "../models/User.js";
 
 export const signUp = async (req, res) => {
   const { email, password, name } = req.body;
@@ -8,19 +9,22 @@ export const signUp = async (req, res) => {
     const userRecord = await auth.createUser({
       email,
       password,
-      displayName: name
+      displayName: name,
     });
 
     // Crear documento en Firestore
-    await db.collection("users").doc(userRecord.uid).set({
+    const newUser = new User({
+      uid: userRecord.uid,
       name,
       email,
-      rol: "user",      
-      favGames: [],      
-      createdAt: new Date()
     });
 
-    //Crear custom token 
+    await db
+      .collection("users")
+      .doc(newUser.uid)
+      .set({ ...newUser });
+
+    //Crear custom token
     const customToken = await auth.createCustomToken(userRecord.uid);
     res.status(201).json({ token: customToken });
   } catch (error) {
@@ -42,7 +46,7 @@ export const login = async (req, res) => {
         email: decodedToken.email,
         rol: "user",
         favGames: [],
-        createdAt: new Date()
+        createdAt: new Date(),
       });
     }
 

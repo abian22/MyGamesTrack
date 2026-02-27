@@ -1,10 +1,10 @@
 import puppeteer from "puppeteer";
+import Game from "./models/Game.js"; // importa el modelo
 
 const urlBusqueda =
   "https://www.nintendo.com/es-es/Buscar/Buscar-299117.html?f=147394-5-10-72-6955-119600";
 
 async function extraerJuegos() {
-  //Se usa puppeter para abrir el navegador y navegar en urlBusqueda
   const navegador = await puppeteer.launch({ headless: false });
   const pagina = await navegador.newPage();
   await pagina.goto(urlBusqueda);
@@ -34,7 +34,7 @@ async function extraerJuegos() {
 
     console.log(`Página ${numPagina}: ${juegos.length} juegos`);
 
-    //Añadimos cada juego al Set, evitando duplicados
+    // Añadimos cada juego al Set, evitando duplicados
     for (const juego of juegos) {
       const clave = JSON.stringify(juego);
       if (!juegosUnicos.has(clave)) juegosUnicos.add(clave);
@@ -42,7 +42,7 @@ async function extraerJuegos() {
 
     numPagina++;
 
-    // Comprobamos si existe un botón "Siguiente" y hacemos clic para pasar de página
+    // Botón "Siguiente"
     const haySiguiente = await pagina.evaluate(() => {
       const siguiente = Array.from(document.querySelectorAll("button, a")).find(
         (el) => el.textContent?.trim() === "Siguiente"
@@ -58,7 +58,6 @@ async function extraerJuegos() {
       return true;
     });
 
-    //Salimos del while si no existe el boton siguiente
     if (!haySiguiente) break;
     await new Promise((r) => setTimeout(r, 1500));
   }
@@ -66,7 +65,11 @@ async function extraerJuegos() {
   await navegador.close();
 
   //Los datos extraídos se convierten en JSON y se guardan
-  const resultado = [...juegosUnicos].map((j) => JSON.parse(j));
+  const resultado = [...juegosUnicos].map((j) => {
+    const juegoObj = JSON.parse(j);
+    return new Game(juegoObj);
+  });
+
   console.log("\nTotal juegos únicos:", resultado.length);
 
   try {
@@ -81,13 +84,6 @@ async function extraerJuegos() {
   } catch (err) {
     console.error("Error guardando JSON:", err);
   }
-}
-
-try {
-  //await extraerJuegos();
-} catch (error) {
-  console.error("Error:", error);
-  process.exit(1);
 }
 
 export { extraerJuegos };
