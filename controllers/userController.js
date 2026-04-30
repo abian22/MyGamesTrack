@@ -1,9 +1,108 @@
-import { db } from "../firebase.js";
+import { db, messaging } from "../firebase.js";
 
 // "fs" permite leer/escribir archivos del sistema. "promises" usa async/await en lugar de callbacks
-import { promises as fs } from "fs";
+import { promises as fs } from "node:fs";
 
 const rutaJuegos = new URL("../juegos.json", import.meta.url);
+
+const parsePrice = (rawPrice) => {
+  if (typeof rawPrice !== "string") return null;
+  const cleaned = rawPrice
+    .replaceAll(/\s/g, "")
+    .replaceAll("EUR", "")
+    .replaceAll("€", "")
+    .replaceAll(".", "")
+    .replaceAll(",", ".");
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeGameId = (title) =>
+  title ? title.replaceAll(/\s+/g, "_").replaceAll(/[^a-zA-Z0-9_-]/g, "") : null;
+const normalizeTitleForSearch = (title) => (title || "Sin título").toLowerCase().trim();
+
+const userHasGameInFavorites = (userData, gameId, gameTitle) => {
+  const favorites =
+    (Array.isArray(userData?.favGames) && userData.favGames) ||
+    (Array.isArray(userData?.favorites) && userData.favorites) ||
+    [];
+
+  return favorites.some((item) => {
+    if (typeof item === "string") {
+      return item === gameId || item === gameTitle;
+    }
+    if (item && typeof item === "object") {
+      const candidateId =
+        item.id || item.gameId || (item.titulo ? normalizeGameId(item.titulo) : null);
+      const candidateTitle = item.title || item.titulo;
+      return candidateId === gameId || candidateTitle === gameTitle;
+    }
+    return false;
+  });
+};
+
+const notifyPriceDrop = async ({
+  gameId,
+  gameTitle,
+  gameImage,
+  oldPrice,
+  newPrice,
+  discount,
+}) => {
+  const usersSnapshot = await db.collection("users").get();
+
+  for (const userDoc of usersSnapshot.docs) {
+    const userData = userDoc.data();
+    if (!userHasGameInFavorites(userData, gameId, gameTitle)) continue;
+
+    const notificationId = `${userDoc.id}_${gameId}_${newPrice.toFixed(2)}`;
+    const notificationRef = db.collection("notifications").doc(notificationId);
+    const existingNotification = await notificationRef.get();
+
+    if (existingNotification.exists) {
+      continue;
+    }
+
+    const notificationPayload = {
+      uid: userDoc.id,
+      gameId,
+      gameTitle,
+      gameImage: gameImage || "",
+      oldPrice,
+      newPrice,
+      discount: discount || "",
+      type: "price_drop",
+      read: false,
+      createdAt: new Date(),
+    };
+
+    await notificationRef.set(notificationPayload);
+
+    const fcmTokens = Array.isArray(userData?.fcmTokens) ? userData.fcmTokens : [];
+    if (!fcmTokens.length) continue;
+
+    try {
+      await messaging.sendEachForMulticast({
+        tokens: fcmTokens,
+        notification: {
+          title: "Bajada de precio",
+          body: `${gameTitle} bajó de ${oldPrice.toFixed(2)}€ a ${newPrice.toFixed(2)}€`,
+          imageUrl: gameImage || undefined,
+        },
+        data: {
+          type: "price_drop",
+          gameId,
+          gameTitle,
+          gameImage: gameImage || "",
+          oldPrice: oldPrice.toFixed(2),
+          newPrice: newPrice.toFixed(2),
+        },
+      });
+    } catch (sendError) {
+      console.error(`Error enviando FCM a ${userDoc.id}:`, sendError);
+    }
+  }
+};
 
 const getAllUsers = async (req, res) => {
   const querySnapshot = await db.collection("users").get();
@@ -38,9 +137,7 @@ const saveAllGames = async (req, res) => {
       // - Eliminamos caracteres especiales: "Zelda™" → "Zelda"
       // - Solo permite: letras, números, guiones y guiones bajos
       // Resultado: ID único, válido y fácil de identificar
-      const id = juego.titulo
-        ? juego.titulo.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "")
-        : null;
+      const id = normalizeGameId(juego.titulo);
 
       // Si el ID está vacío, saltamos este juego
       if (!id) {
@@ -65,21 +162,57 @@ const saveAllGames = async (req, res) => {
           datosExistentes.descuento === juego.descuento &&
           datosExistentes.imagen === juego.imagen
         ) {
+          const tituloLowerEsperado = normalizeTitleForSearch(juego.titulo);
+          if (datosExistentes.tituloLower !== tituloLowerEsperado) {
+            await ref.update({
+              titulo: juego.titulo || "Sin título",
+              tituloLower: tituloLowerEsperado,
+            });
+            resultados.push({ titulo: juego.titulo, status: "normalizado_tituloLower" });
+            continue;
+          }
           resultados.push({ titulo: juego.titulo, status: "sin cambios" });
         } else {
+          const precioAnterior = parsePrice(datosExistentes.precio);
+          const precioActual = parsePrice(juego.precio);
+          const hayBajadaReal =
+            precioAnterior !== null &&
+            precioActual !== null &&
+            precioActual < precioAnterior;
+
           // ♻️ ACTUALIZAR SOLO CAMPOS ESPECÍFICOS
           // Usa update() en lugar de set() para no perder otros datos del documento
           // Si alguien agregó datos manualmente en Firebase, se conservan
           await ref.update({
+            titulo: juego.titulo || "Sin título",
+            tituloLower: normalizeTitleForSearch(juego.titulo),
             precio: juego.precio,
+            precioAnterior: datosExistentes.precio,
             descuento: juego.descuento,
             imagen: juego.imagen
           });
+
+          if (hayBajadaReal) {
+            await notifyPriceDrop({
+              gameId: id,
+              gameTitle: juego.titulo,
+              gameImage: juego.imagen || "",
+              oldPrice: precioAnterior,
+              newPrice: precioActual,
+              discount: juego.descuento,
+            });
+            resultados.push({ titulo: juego.titulo, status: "actualizado_y_notificado" });
+            continue;
+          }
           resultados.push({ titulo: juego.titulo, status: "actualizado" });
         }
       } else {
         // Si el juego no existe aún, lo creamos en Firebase
-        await ref.set(juego);
+        await ref.set({
+          ...juego,
+          titulo: juego.titulo || "Sin título",
+          tituloLower: normalizeTitleForSearch(juego.titulo),
+        });
         resultados.push({ titulo: juego.titulo, status: "creado" });
       }
     }
@@ -97,7 +230,5 @@ const saveAllGames = async (req, res) => {
     if (res) res.status(500).json({ error: "Error al guardar juegos" });
   }
 };
-
-saveAllGames(); 
 
 export { getAllUsers, saveAllGames };
