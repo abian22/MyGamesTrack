@@ -1,5 +1,6 @@
 class Game {
   constructor({ titulo, imagen, precio, descuento, precioAnterior = "" }) {
+    // tituloLower acelera búsquedas por prefijo en Firestore.
     this.titulo = titulo || "Sin título";
     this.tituloLower = this.titulo.toLowerCase();
     this.imagen = imagen || "";

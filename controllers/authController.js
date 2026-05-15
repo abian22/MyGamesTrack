@@ -1,30 +1,29 @@
 import { auth, db } from "../firebase.js";
 import User from "../models/User.js";
 
+const USERS_COLLECTION = "users";
+
 export const signUp = async (req, res) => {
   const { email, password, name } = req.body;
 
   try {
-    // Crear usuario en Firebase
+    // Crea usuario en Firebase Auth.
     const userRecord = await auth.createUser({
       email,
       password,
       displayName: name,
     });
 
-    // Crear documento en Firestore
+    // Perfil base en Firestore.
     const newUser = new User({
       uid: userRecord.uid,
       name,
       email,
     });
 
-    await db
-      .collection("users")
-      .doc(newUser.uid)
-      .set({ ...newUser });
+    await db.collection(USERS_COLLECTION).doc(newUser.uid).set({ ...newUser });
 
-    //Crear custom token
+    // Token de sesión para el cliente.
     const customToken = await auth.createCustomToken(userRecord.uid);
     res.status(201).json({ token: customToken });
   } catch (error) {
@@ -36,13 +35,13 @@ export const signUp = async (req, res) => {
 // Login en Firebase
 export const login = async (req, res) => {
   try {
-    const { idToken } = req.body; // token recibido desde frontend
+    const { idToken } = req.body;
     const decodedToken = await auth.verifyIdToken(idToken);
 
-    // Crear documento Firestore si no existe
-    const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+    // Si viene de Auth pero no tiene perfil, se inicializa
+    const userDoc = await db.collection(USERS_COLLECTION).doc(decodedToken.uid).get();
     if (!userDoc.exists) {
-      await db.collection("users").doc(decodedToken.uid).set({
+      await db.collection(USERS_COLLECTION).doc(decodedToken.uid).set({
         email: decodedToken.email,
         rol: "user",
         favGames: [],

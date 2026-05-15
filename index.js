@@ -2,7 +2,6 @@ import app from './app.js';
 import { saveAllGames } from './controllers/userController.js';
 import { extraerJuegos } from './controllers/scrappingGames.js';
 import { startGamesPriceListener } from './controllers/priceDropListener.js';
-
 const PORT = 4000;
 const HORA_EJECUCION = 18;
 const MINUTO_EJECUCION = 0;
@@ -11,8 +10,9 @@ const TIMEZONE = "Europe/Madrid";
 console.log('🚀 Iniciando servidor...');
 
 async function actualizarJuegos() {
-   await extraerJuegos(); // ← espera a que termine el scraping
-   await saveAllGames();  // ← luego guarda en Firebase
+   // Flujo principal: scrapea web y persiste cambios en Firestore.
+   await extraerJuegos(); 
+   await saveAllGames();  
  }
 
 function msHastaSiguienteEjecucion() {
@@ -28,6 +28,7 @@ function msHastaSiguienteEjecucion() {
 }
 
 function programarActualizacionDiaria() {
+  // Reprograma la siguiente ejecución cada vez que termina (sin cron externo).
   const esperaMs = msHastaSiguienteEjecucion();
   const horasRestantes = (esperaMs / (1000 * 60 * 60)).toFixed(2);
   console.log(`⏰ Próxima actualización automática en ${horasRestantes}h (18:00 ${TIMEZONE}).`);
