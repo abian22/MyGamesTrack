@@ -5,7 +5,7 @@ import { startGamesPriceListener } from './controllers/priceDropListener.js';
 const PORT = 4000;
 const HORA_EJECUCION = 18;
 const MINUTO_EJECUCION = 0;
-const TIMEZONE = "Europe/Madrid";
+const TIMEZONE = "Europa/España";
 
 console.log('🚀 Iniciando servidor...');
 
@@ -48,5 +48,16 @@ function programarActualizacionDiaria() {
 programarActualizacionDiaria();
 startGamesPriceListener();
 
-app.listen(PORT);
-console.log(`✅ Servidor escuchando en el puerto ${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`✅ Servidor escuchando en el puerto ${PORT}`);
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `El puerto ${PORT} ya está en uso. Cierra la otra instancia (Ctrl+C) o mata el proceso que lo ocupa.`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
